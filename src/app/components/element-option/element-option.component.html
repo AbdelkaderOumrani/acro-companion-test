@@ -1,0 +1,6 @@
+@let isSelected = isSelected$ | async;
+<button type="button" class="option" [class.selected]="isSelected === true" [attr.title]="element()?.label"
+  (click)="onAssign()">
+  <span class="option-sym">{{ element()?.label }}</span>
+  <span class="option-val">{{ element()?.value | number: '1.1-1' }}</span>
+</button>

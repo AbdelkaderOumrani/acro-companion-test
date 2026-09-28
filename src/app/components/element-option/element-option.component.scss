@@ -1,0 +1,53 @@
+:host {
+  display: block;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  padding: 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  background: var(--white);
+  font: inherit;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.option:hover {
+  border-color: var(--blue-md);
+  background: var(--blue-lt);
+}
+
+.option.selected {
+  border-color: var(--blue);
+  background: var(--blue-lt);
+}
+
+.option-sym {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--navy);
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.option.selected .option-sym {
+  color: var(--blue);
+}
+
+.option-val {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.option.selected .option-val {
+  color: var(--blue);
+}

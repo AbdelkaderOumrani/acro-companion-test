@@ -1,0 +1,70 @@
+:host {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.slot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  cursor: pointer;
+  padding-bottom: 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  transition: border-color 0.15s;
+}
+
+.slot:hover {
+  border-bottom-color: var(--blue-md);
+}
+
+.slot.active {
+  border-bottom-color: var(--blue);
+}
+
+.slot-index {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.slot.active .slot-index {
+  color: var(--blue);
+}
+
+.slot-symbol {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--navy);
+  line-height: 1;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slot-symbol.empty {
+  width: 20px;
+  height: 2px;
+  min-height: 0;
+  background: var(--slate-2);
+  border-radius: 1px;
+  margin: 13px 0;
+}
+
+.slot-val {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}

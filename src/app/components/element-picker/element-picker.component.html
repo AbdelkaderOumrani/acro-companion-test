@@ -1,0 +1,21 @@
+@let active = routineState.activeSlotIndex$ | async;
+@let groupedElements = routineState.groupedElements$ | async;
+
+<div class="picker" [class.visible]="active !== null">
+  @if (active !== null) {
+  @for (group of groupedElements ?? []; track group.category.id) {
+  <div class="category">
+    <div class="category-title">{{ group.category.label }}</div>
+    <div class="options-grid">
+      @for (element of group.elements; track element.id) {
+      <app-element-option [elementId]="element.id" />
+      }
+    </div>
+  </div>
+  }
+  } @else {
+  <div class="picker-empty">
+    <p>Click a slot to add an element</p>
+  </div>
+  }
+</div>

@@ -1,0 +1,26 @@
+@let active = routineState.activeSlotIndex$ | async;
+@let totalValue = routineState.totalValue$ | async;
+@let slotIndexes = routineState.slotIndexes$ | async;
+
+<header class="app-header">
+  <h1>Routine Builder</h1>
+  <div class="score-block">
+    <span class="score-label">D-Score</span>
+    <span class="score-value">{{ totalValue | number: '1.1-1' }}</span>
+  </div>
+</header>
+<div class="slot-bar">
+  @for (index of slotIndexes ?? []; track index) {
+  <app-routine-bar-slot [slotIndex]="index" />
+  }
+</div>
+<div class="toolbar">
+  <span class="toolbar-hint">
+    @if (active !== null) {
+    Slot <strong>{{ active + 1 }}</strong> — choose an element
+    } @else {
+    Click a slot to add an element
+    }
+  </span>
+  <button type="button" class="btn-clear" (click)="onClearAll()">Clear all</button>
+</div>

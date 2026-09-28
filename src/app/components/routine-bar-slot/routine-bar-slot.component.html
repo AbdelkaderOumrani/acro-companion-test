@@ -1,0 +1,13 @@
+@let isActive = isActive$ | async;
+@let element = element$ | async;
+
+<button type="button" class="slot" [class.active]="isActive === true" (click)="onSelect()">
+  <span class="slot-index">{{ slotIndex() + 1 }}</span>
+  @if (element) {
+  <span class="slot-symbol" [attr.title]="element.label">{{ element.label }}</span>
+  <span class="slot-val">{{ element.value | number: '1.1-1' }}</span>
+  } @else {
+  <span class="slot-symbol empty"></span>
+  <span class="slot-val">&nbsp;</span>
+  }
+</button>
