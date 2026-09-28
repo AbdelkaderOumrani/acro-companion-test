@@ -1,15 +1,17 @@
-import { AsyncPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RoutineStateService } from '../../services/routine-state.service';
+import { RoutineStore } from '../../services/routine.store';
 import { ElementOptionComponent } from '../element-option/element-option.component';
 
 @Component({
   selector: 'app-element-picker',
-  imports: [AsyncPipe, ElementOptionComponent],
+  imports: [ElementOptionComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './element-picker.component.html',
   styleUrl: './element-picker.component.scss',
 })
 export class ElementPickerComponent {
-  routineState = inject(RoutineStateService);
+  private _store = inject(RoutineStore);
+
+  activeSlotIndex = this._store.activeSlotIndex;
+  groupedElements = this._store.groupedElements;
 }

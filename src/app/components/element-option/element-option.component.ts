@@ -1,13 +1,10 @@
-import { AsyncPipe, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { RoutineService } from '../../services/routine.service';
-import { RoutineStateService } from '../../services/routine-state.service';
-import { toObservable } from '@angular/core/rxjs-interop';
-import { switchMap } from 'rxjs';
+import { RoutineStore } from '../../services/routine.store';
 
 @Component({
   selector: 'app-element-option',
-  imports: [AsyncPipe, DecimalPipe],
+  imports: [DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './element-option.component.html',
   styleUrl: './element-option.component.scss',
@@ -15,16 +12,14 @@ import { switchMap } from 'rxjs';
 export class ElementOptionComponent {
   elementId = input.required<string>();
 
-  private _routineService = inject(RoutineService);
-  private _routineState = inject(RoutineStateService);
+  private _store = inject(RoutineStore);
 
-  element = computed(() => this._routineState.getElementById(this.elementId()));
-
-  isSelected$ = toObservable(this.elementId).pipe(
-    switchMap((id) => this._routineService.isElementSelected$(id)),
+  element = computed(
+    () => this._store.elements().find((element) => element.id === this.elementId()) ?? null,
   );
+  isSelected = computed(() => this._store.activeElementId() === this.elementId());
 
   onAssign(): void {
-    this._routineService.assignElement(this.elementId());
+    this._store.assignElement(this.elementId());
   }
 }

@@ -1,12 +1,10 @@
-import { AsyncPipe, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { RoutineService } from '../../services/routine.service';
-import { toObservable } from '@angular/core/rxjs-interop';
-import { switchMap } from 'rxjs';
+import { RoutineStore } from '../../services/routine.store';
 
 @Component({
   selector: 'app-routine-bar-slot',
-  imports: [AsyncPipe, DecimalPipe],
+  imports: [DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './routine-bar-slot.component.html',
   styleUrl: './routine-bar-slot.component.scss',
@@ -14,16 +12,15 @@ import { switchMap } from 'rxjs';
 export class RoutineBarSlotComponent {
   slotIndex = input.required<number>();
 
-  private _routineService = inject(RoutineService);
+  private _store = inject(RoutineStore);
 
-  element$ = toObservable(this.slotIndex).pipe(
-    switchMap((index) => this._routineService.slotElement$(index)),
-  );
-  isActive$ = toObservable(this.slotIndex).pipe(
-    switchMap((index) => this._routineService.isSlotActive$(index)),
-  );
+  element = computed(() => {
+    const id = this._store.slots()[this.slotIndex()];
+    return id ? (this._store.elements().find((element) => element.id === id) ?? null) : null;
+  });
+  isActive = computed(() => this._store.activeSlotIndex() === this.slotIndex());
 
   onSelect(): void {
-    this._routineService.selectSlot(this.slotIndex());
+    this._store.selectSlot(this.slotIndex());
   }
 }

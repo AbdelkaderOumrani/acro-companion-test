@@ -1,21 +1,23 @@
-import { AsyncPipe, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RoutineService } from '../../services/routine.service';
+import { RoutineStore } from '../../services/routine.store';
 import { RoutineBarSlotComponent } from '../routine-bar-slot/routine-bar-slot.component';
-import { RoutineStateService } from '../../services/routine-state.service';
 
 @Component({
   selector: 'app-routine-bar',
-  imports: [AsyncPipe, DecimalPipe, RoutineBarSlotComponent],
+  imports: [DecimalPipe, RoutineBarSlotComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './routine-bar.component.html',
   styleUrl: './routine-bar.component.scss',
 })
 export class RoutineBarComponent {
-  private _routineService = inject(RoutineService);
-  routineState = inject(RoutineStateService);
+  private _store = inject(RoutineStore);
+
+  slotIndexes = this._store.slotIndexes;
+  totalValue = this._store.totalValue;
+  activeSlotIndex = this._store.activeSlotIndex;
 
   onClearAll(): void {
-    this._routineService.clearAll();
+    this._store.clearAll();
   }
 }
