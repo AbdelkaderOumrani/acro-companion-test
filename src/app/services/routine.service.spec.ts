@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
-import { SEED_ELEMENTS, SLOT_COUNT } from '../data/seeds';
+import { SEED_ELEMENTS, SLOT_COUNT, createSeedState } from '../data/seeds';
+import { reduceRoutine } from '../utils/routine-reducer';
 import { RoutineStateService } from './routine-state.service';
 import { RoutineService } from './routine.service';
 
@@ -13,6 +14,69 @@ function buildSlots(entries: Record<number, string> = {}): (string | null)[] {
   }
   return slots;
 }
+
+describe('reduceRoutine', () => {
+  it('sets the active slot', () => {
+    expect(reduceRoutine(createSeedState(), { type: 'selectSlot', index: 2 }).activeSlotIndex).toBe(
+      2,
+    );
+  });
+
+  it('returns the same state for an out-of-range or already-active slot', () => {
+    const state = createSeedState();
+    expect(reduceRoutine(state, { type: 'selectSlot', index: -1 })).toBe(state);
+    expect(reduceRoutine(state, { type: 'selectSlot', index: SLOT_COUNT })).toBe(state);
+
+    const active = { ...state, activeSlotIndex: 3 };
+    expect(reduceRoutine(active, { type: 'selectSlot', index: 3 })).toBe(active);
+  });
+
+  it('fills the active slot and advances to the next one', () => {
+    const state = { ...createSeedState(), activeSlotIndex: 0 };
+
+    const next = reduceRoutine(state, { type: 'assignElement', elementId: 'f1' });
+
+    expect(next.slots[0]).toBe('f1');
+    expect(next.activeSlotIndex).toBe(1);
+  });
+
+  it('overwrites an occupied slot when reassigned', () => {
+    const state = { ...createSeedState(), slots: buildSlots({ 0: 'f1' }), activeSlotIndex: 0 };
+
+    const next = reduceRoutine(state, { type: 'assignElement', elementId: 'b1' });
+
+    expect(next.slots[0]).toBe('b1');
+    expect(next.activeSlotIndex).toBe(1);
+  });
+
+  it('does not advance past the last slot', () => {
+    const state = { ...createSeedState(), activeSlotIndex: SLOT_COUNT - 1 };
+
+    const next = reduceRoutine(state, { type: 'assignElement', elementId: 'f1' });
+
+    expect(next.slots[SLOT_COUNT - 1]).toBe('f1');
+    expect(next.activeSlotIndex).toBe(SLOT_COUNT - 1);
+  });
+
+  it('ignores assignElement with no active slot', () => {
+    const state = createSeedState();
+    expect(reduceRoutine(state, { type: 'assignElement', elementId: 'f1' })).toBe(state);
+  });
+
+  it('ignores assignElement for an unknown element id', () => {
+    const state = { ...createSeedState(), activeSlotIndex: 0 };
+    expect(reduceRoutine(state, { type: 'assignElement', elementId: 'ghost' })).toBe(state);
+  });
+
+  it('clearAll empties the slots and the active index', () => {
+    const state = { ...createSeedState(), slots: buildSlots({ 0: 'f1' }), activeSlotIndex: 0 };
+
+    const next = reduceRoutine(state, { type: 'clearAll' });
+
+    expect(next.slots.every((slot) => slot === null)).toBe(true);
+    expect(next.activeSlotIndex).toBeNull();
+  });
+});
 
 describe('RoutineService', () => {
   let service: RoutineService;
@@ -30,123 +94,115 @@ describe('RoutineService', () => {
     localStorage.clear();
   });
 
-  describe('selectSlot', () => {
-    it('sets the active slot index', () => {
-      service.selectSlot(3);
-      expect(state.activeSlotIndexSnapshot).toBe(3);
-    });
-
-    it('ignores negative and out-of-range indexes', () => {
-      service.selectSlot(-1);
-      service.selectSlot(SLOT_COUNT);
-
-      expect(state.activeSlotIndexSnapshot).toBeNull();
-    });
-  });
-
-  describe('assignElement', () => {
-    it('does nothing when no slot is active', () => {
-      service.assignElement('f1');
-
-      expect(state.slotsSnapshot.every((slot) => slot === null)).toBe(true);
-      expect(state.activeSlotIndexSnapshot).toBeNull();
-    });
-
-    it('fills the active slot and advances to the next one', () => {
+  describe('before load', () => {
+    it('changes nothing and persists nothing', () => {
       service.selectSlot(0);
       service.assignElement('f1');
 
+      expect(state.activeSlotIndexSnapshot).toBeNull();
+      expect(state.slotsSnapshot.every((slot) => slot === null)).toBe(true);
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    });
+  });
+
+  describe('after load', () => {
+    beforeEach(() => {
+      service.load();
+    });
+
+    it('dispatches commands through the reducer into the state', () => {
+      service.selectSlot(0);
+      expect(state.activeSlotIndexSnapshot).toBe(0);
+
+      service.assignElement('f1');
       expect(state.slotsSnapshot[0]).toBe('f1');
       expect(state.activeSlotIndexSnapshot).toBe(1);
-    });
-
-    it('ignores ids that are not in the catalog', () => {
-      service.selectSlot(0);
-      service.assignElement('ghost');
-
-      expect(state.slotsSnapshot[0]).toBeNull();
-      expect(state.activeSlotIndexSnapshot).toBe(0);
-    });
-
-    it('overwrites an existing slot when reassigned', () => {
-      service.selectSlot(0);
-      service.assignElement('f1');
-      service.selectSlot(0);
-      service.assignElement('b1');
-
-      expect(state.slotsSnapshot[0]).toBe('b1');
-    });
-
-    it('stays on the last slot instead of clearing the selection', () => {
-      service.selectSlot(SLOT_COUNT - 1);
-      service.assignElement('f1');
-
-      expect(state.slotsSnapshot[SLOT_COUNT - 1]).toBe('f1');
-      expect(state.activeSlotIndexSnapshot).toBe(SLOT_COUNT - 1);
-    });
-  });
-
-  describe('clearAll', () => {
-    it('resets all slots and the active index', () => {
-      service.selectSlot(0);
-      service.assignElement('f1');
-      service.selectSlot(2);
-      service.assignElement('b1');
 
       service.clearAll();
-
       expect(state.slotsSnapshot.every((slot) => slot === null)).toBe(true);
       expect(state.activeSlotIndexSnapshot).toBeNull();
     });
-  });
 
-  describe('derived streams', () => {
-    it('slotElement$ resolves the element for a slot', async () => {
-      service.selectSlot(0);
-      service.assignElement('f4');
+    describe('derived streams', () => {
+      it('slotElement$ resolves the element for a slot', async () => {
+        service.selectSlot(0);
+        service.assignElement('f4');
 
-      expect((await firstValueFrom(service.slotElement$(0)))?.id).toBe('f4');
+        expect((await firstValueFrom(service.slotElement$(0)))?.id).toBe('f4');
+      });
+
+      it('slotElement$ emits null for an empty slot', async () => {
+        expect(await firstValueFrom(service.slotElement$(5))).toBeNull();
+      });
+
+      it('slotElement$ does not emit for untouched slots', () => {
+        service.selectSlot(0);
+        const emissions: (string | null)[] = [];
+        const subscription = service
+          .slotElement$(1)
+          .subscribe((element) => emissions.push(element?.id ?? null));
+
+        service.assignElement('f1');
+
+        subscription.unsubscribe();
+        expect(emissions).toEqual([null]);
+      });
+
+      it('isSlotActive$ is true only for the active slot', async () => {
+        service.selectSlot(2);
+
+        expect(await firstValueFrom(service.isSlotActive$(2))).toBe(true);
+        expect(await firstValueFrom(service.isSlotActive$(1))).toBe(false);
+      });
+
+      it('isElementSelected$ is true only for the active slot content', async () => {
+        service.selectSlot(0);
+        service.assignElement('f1');
+        expect(await firstValueFrom(service.isElementSelected$('f1'))).toBe(false);
+
+        service.selectSlot(0);
+        expect(await firstValueFrom(service.isElementSelected$('f1'))).toBe(true);
+      });
+
+      it('totalValue$ sums the assigned element values', async () => {
+        service.selectSlot(0);
+        service.assignElement('f1');
+        service.assignElement('b2');
+
+        expect(await firstValueFrom(state.totalValue$)).toBeCloseTo(1.4);
+      });
     });
 
-    it('slotElement$ emits null for an empty slot', async () => {
-      expect(await firstValueFrom(service.slotElement$(5))).toBeNull();
-    });
+    describe('persistence', () => {
+      it('persists the sanitized state right after load', () => {
+        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) as string);
+        expect(stored.slots).toHaveLength(SLOT_COUNT);
+        expect(stored.activeSlotIndex).toBeNull();
+      });
 
-    it('slotElement$ does not emit for untouched slots', () => {
-      service.selectSlot(0);
-      const emissions: (string | null)[] = [];
-      const subscription = service
-        .slotElement$(1)
-        .subscribe((element) => emissions.push(element?.id ?? null));
+      it('persists every state change, writing only the mutable parts', () => {
+        service.selectSlot(0);
+        service.assignElement('f1');
 
-      service.assignElement('f1');
+        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) as string);
+        expect(stored.slots[0]).toBe('f1');
+        expect(stored.activeSlotIndex).toBe(1);
+        expect(Object.keys(stored).sort()).toEqual(['activeSlotIndex', 'slots']);
+      });
 
-      subscription.unsubscribe();
-      expect(emissions).toEqual([null]);
-    });
+      it('restores what was persisted on the next load', () => {
+        service.selectSlot(0);
+        service.assignElement('f1');
 
-    it('isSlotActive$ is true only for the active slot', async () => {
-      service.selectSlot(2);
+        TestBed.resetTestingModule();
+        TestBed.configureTestingModule({});
+        const reloaded = TestBed.inject(RoutineService);
+        const reloadedState = TestBed.inject(RoutineStateService);
+        reloaded.load();
 
-      expect(await firstValueFrom(service.isSlotActive$(2))).toBe(true);
-      expect(await firstValueFrom(service.isSlotActive$(1))).toBe(false);
-    });
-
-    it('isElementSelected$ is true only for the active slot content', async () => {
-      service.selectSlot(0);
-      service.assignElement('f1');
-      expect(await firstValueFrom(service.isElementSelected$('f1'))).toBe(false);
-
-      service.selectSlot(0);
-      expect(await firstValueFrom(service.isElementSelected$('f1'))).toBe(true);
-    });
-
-    it('totalValue$ sums the assigned element values', async () => {
-      service.selectSlot(0);
-      service.assignElement('f1');
-      service.assignElement('b2');
-
-      expect(await firstValueFrom(state.totalValue$)).toBeCloseTo(1.4);
+        expect(reloadedState.slotsSnapshot[0]).toBe('f1');
+        expect(reloadedState.activeSlotIndexSnapshot).toBe(1);
+      });
     });
   });
 
@@ -220,56 +276,6 @@ describe('RoutineService', () => {
       service.load();
 
       expect(state.elementsSnapshot).toEqual(SEED_ELEMENTS);
-    });
-  });
-
-  describe('persistence', () => {
-    it('does not write to storage before load is called', () => {
-      service.selectSlot(0);
-
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
-    });
-
-    it('persists the sanitized state right after load', () => {
-      service.load();
-
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) as string);
-      expect(stored.slots).toHaveLength(SLOT_COUNT);
-      expect(stored.activeSlotIndex).toBeNull();
-    });
-
-    it('persists after each state change', () => {
-      service.load();
-      service.selectSlot(0);
-      service.assignElement('f1');
-
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) as string);
-      expect(stored.slots[0]).toBe('f1');
-      expect(stored.activeSlotIndex).toBe(1);
-    });
-
-    it('persists only the mutable state, not the seed catalog', () => {
-      service.load();
-      service.selectSlot(0);
-      service.assignElement('f1');
-
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) as string);
-      expect(Object.keys(stored).sort()).toEqual(['activeSlotIndex', 'slots']);
-    });
-
-    it('restores what was persisted on the next load', () => {
-      service.load();
-      service.selectSlot(0);
-      service.assignElement('f1');
-
-      TestBed.resetTestingModule();
-      TestBed.configureTestingModule({});
-      const reloaded = TestBed.inject(RoutineService);
-      const reloadedState = TestBed.inject(RoutineStateService);
-      reloaded.load();
-
-      expect(reloadedState.slotsSnapshot[0]).toBe('f1');
-      expect(reloadedState.activeSlotIndexSnapshot).toBe(1);
     });
   });
 });

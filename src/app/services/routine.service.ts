@@ -1,10 +1,11 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Observable, combineLatest } from 'rxjs';
+import { Observable, Subject, combineLatest, merge } from 'rxjs';
 import { distinctUntilChanged, map, tap } from 'rxjs/operators';
-import { SEED_SLOTS, createSeedState, SLOT_COUNT } from '../data/seeds';
+import { createSeedState, SLOT_COUNT } from '../data/seeds';
 import { GymnasticElement } from '../models/element.model';
 import { RoutineState } from '../models/routine-state.model';
+import { RoutineCommand, reduceRoutine } from '../utils/routine-reducer';
 import { RoutineStateService } from './routine-state.service';
 
 const STORAGE_KEY = 'routine-state';
@@ -13,7 +14,20 @@ const STORAGE_KEY = 'routine-state';
 export class RoutineService {
   private _state = inject(RoutineStateService);
   private _destroyRef = inject(DestroyRef);
-  private _persistenceStarted = false;
+  private _initialized = false;
+
+  // User events as observables: components push, never mutate state directly.
+  private readonly _selectSlot$ = new Subject<number>();
+  private readonly _assignElement$ = new Subject<string>();
+  private readonly _clearAll$ = new Subject<void>();
+
+  private readonly _commands$ = merge(
+    this._selectSlot$.pipe(map((index): RoutineCommand => ({ type: 'selectSlot', index }))),
+    this._assignElement$.pipe(
+      map((elementId): RoutineCommand => ({ type: 'assignElement', elementId })),
+    ),
+    this._clearAll$.pipe(map((): RoutineCommand => ({ type: 'clearAll' }))),
+  );
 
   slotElement$(index: number): Observable<GymnasticElement | null> {
     // slots$ emits a fresh array on every change, so without distinctUntilChanged
@@ -27,6 +41,8 @@ export class RoutineService {
     );
   }
 
+  // Both queries map an already-distinct source, so map() preserves distinctness
+  // and no further distinctUntilChanged is needed.
   isSlotActive$(index: number): Observable<boolean> {
     return this._state.activeSlotIndex$.pipe(map((activeSlotIndex) => activeSlotIndex === index));
   }
@@ -37,47 +53,26 @@ export class RoutineService {
     );
   }
 
+  /**
+   * Single entry point, called once from AppComponent: restores the saved state,
+   * then starts the command pipeline and persistence.
+   */
   load(): void {
+    if (this._initialized) {
+      return; // guard against a second call wiring duplicate subscriptions.
+    }
+    this._initialized = true;
+
     this._state.hydrate(this._readStoredState());
-    // Persistence starts only after hydration: the state streams emit their current
-    // value on subscribe, so starting it in the constructor would overwrite storage
-    // before the saved state has been read.
-    this._startPersistence();
-  }
 
-  selectSlot(index: number): void {
-    if (index < 0 || index >= SLOT_COUNT) {
-      return;
-    }
-    this._state.activeSlotIndex = index;
-  }
+    this._commands$
+      .pipe(
+        tap((command) => this._dispatch(command)),
+        takeUntilDestroyed(this._destroyRef),
+      )
+      .subscribe();
 
-  assignElement(id: string): void {
-    if (this._state.getElementById(id) === undefined) {
-      return;
-    }
-    const activeSlotIndex = this._state.activeSlotIndexSnapshot;
-    if (activeSlotIndex === null) {
-      return;
-    }
-    const slots = [...this._state.slotsSnapshot];
-    slots[activeSlotIndex] = id;
-    const next = activeSlotIndex + 1;
-    this._state.slots = slots;
-    // No slot after the last one — stay on it so the picker stays open.
-    this._state.activeSlotIndex = next < SLOT_COUNT ? next : activeSlotIndex;
-  }
-
-  clearAll(): void {
-    this._state.slots = [...SEED_SLOTS];
-    this._state.activeSlotIndex = null;
-  }
-
-  private _startPersistence(): void {
-    if (this._persistenceStarted) {
-      return; // load() may be called again — keep a single subscription.
-    }
-    this._persistenceStarted = true;
+    // Wired after hydration so the first persisted value is the loaded state, never the seed.
     combineLatest([
       this._state.categories$,
       this._state.elements$,
@@ -86,17 +81,66 @@ export class RoutineService {
       this._state.activeSlotIndex$,
     ])
       .pipe(
-        tap(() => {
-          try {
-            const { slots, activeSlotIndex } = this._state.snapshot;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ slots, activeSlotIndex }));
-          } catch {
-            // storage unavailable (e.g. private mode) — keep in-memory state
-          }
-        }),
+        tap(() => this._persist()),
         takeUntilDestroyed(this._destroyRef),
       )
       .subscribe();
+  }
+
+  selectSlot(index: number): void {
+    this._selectSlot$.next(index);
+  }
+
+  assignElement(elementId: string): void {
+    this._assignElement$.next(elementId);
+  }
+
+  clearAll(): void {
+    this._clearAll$.next();
+  }
+
+  private _persist(): void {
+    try {
+      // Only the mutable parts are persisted; the catalog is rebuilt from seeds on load.
+      const { slots, activeSlotIndex } = this._state.snapshot;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ slots, activeSlotIndex }));
+    } catch {
+      // storage unavailable (e.g. private mode) — keep in-memory state
+    }
+  }
+
+  /** Validates a command before it is applied; warns and returns false when invalid. */
+  private _assert(command: RoutineCommand): boolean {
+    if (command.type === 'selectSlot') {
+      const isValidSlot = command.index >= 0 && command.index < SLOT_COUNT;
+      if (!isValidSlot) {
+        console.warn(`[RoutineService] Ignoring invalid slot index: ${command.index}`);
+        return false;
+      }
+    }
+
+    if (command.type === 'assignElement' && !this._state.getElementById(command.elementId)) {
+      console.warn(`[RoutineService] Unknown element id "${command.elementId}" — ignoring.`);
+      return false;
+    }
+
+    return true;
+  }
+
+  /** Runs the reducer over the current state and writes back only what changed. */
+  private _dispatch(command: RoutineCommand): void {
+    if (!this._assert(command)) {
+      return;
+    }
+
+    const current = this._state.snapshot;
+    const next = reduceRoutine(current, command);
+    if (next.slots !== current.slots) {
+      this._state.slots = next.slots;
+    }
+    if (next.activeSlotIndex !== current.activeSlotIndex) {
+      this._state.activeSlotIndex = next.activeSlotIndex;
+    }
   }
 
   private _readStoredState(): RoutineState {
